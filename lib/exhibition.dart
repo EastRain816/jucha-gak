@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'figma_graphics.dart';
+import 'navigation_motion.dart';
 
 const _white = Color(0xfff6f7fc);
 const _secondary = Color(0xb3ececec);
@@ -24,6 +23,7 @@ enum ExhibitionStage {
   entry,
   zoneGuidance,
   approach,
+  reversing,
   parked,
 }
 
@@ -34,11 +34,12 @@ class Exhibition extends StatefulWidget {
   State<Exhibition> createState() => _ExhibitionState();
 }
 
-class _ExhibitionState extends State<Exhibition>
-    with SingleTickerProviderStateMixin {
+class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
   late ExhibitionStage _stage;
   late final AnimationController _countdown;
-  Timer? _advanceTimer;
+  late final AnimationController _roadMotion;
+  late final AnimationController _parkingMotion;
+  late final AnimationController _parkingOutro;
   String _criterion = '가까운 거리';
   int _route = 0;
   int _floor = 1;
@@ -56,18 +57,44 @@ class _ExhibitionState extends State<Exhibition>
               _continueSuggestion();
             }
           });
+    _roadMotion =
+        AnimationController(vsync: this, duration: const Duration(seconds: 12))
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed &&
+                _stage == ExhibitionStage.driving) {
+              _go(ExhibitionStage.changeSuggestion);
+            }
+          });
+    _parkingOutro =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 800),
+        )..addStatusListener((status) {
+          if (mounted && status == AnimationStatus.completed) setState(() {});
+        });
+    _parkingMotion = AnimationController(
+      vsync: this,
+      duration: parkingDriveDuration,
+    )..addListener(_syncParkingStage);
     _scheduleStage();
   }
 
   @override
   void dispose() {
-    _advanceTimer?.cancel();
+    _roadMotion.stop();
+    _parkingMotion.stop();
+    _parkingOutro.stop();
     _countdown.dispose();
+    _roadMotion.dispose();
+    _parkingMotion.dispose();
+    _parkingOutro.dispose();
     super.dispose();
   }
 
   void _go(ExhibitionStage stage) {
-    _advanceTimer?.cancel();
+    _roadMotion.stop();
+    _parkingMotion.stop();
+    _parkingOutro.stop();
     _countdown.stop();
     if (!mounted) return;
     setState(() {
@@ -79,6 +106,7 @@ class _ExhibitionState extends State<Exhibition>
         _floorsExpanded = true;
       }
     });
+    _parkingOutro.value = 0;
     _scheduleStage();
   }
 
@@ -87,16 +115,42 @@ class _ExhibitionState extends State<Exhibition>
       _countdown.forward(from: 0);
       return;
     }
-    // Simulation proceeds without adding buttons absent from the Figma design.
-    final (delay, next) = switch (_stage) {
-      ExhibitionStage.driving => (8, ExhibitionStage.changeSuggestion),
-      ExhibitionStage.entry => (7, ExhibitionStage.zoneGuidance),
-      ExhibitionStage.zoneGuidance => (7, ExhibitionStage.approach),
-      ExhibitionStage.approach => (8, ExhibitionStage.parked),
-      _ => (0, _stage),
-    };
-    if (delay > 0) {
-      _advanceTimer = Timer(Duration(seconds: delay), () => _go(next));
+    if (_stage == ExhibitionStage.driving) {
+      _roadMotion.forward(from: 0);
+    } else if (_stage.index >= ExhibitionStage.entry.index) {
+      final start = switch (_stage) {
+        ExhibitionStage.entry => 0.0,
+        ExhibitionStage.zoneGuidance => parkingEntryEnd,
+        ExhibitionStage.approach => parkingTopViewEnd,
+        ExhibitionStage.reversing => parkingReverseStart,
+        _ => 1.0,
+      };
+      _parkingMotion.value = start;
+      if (start < 1) {
+        _parkingMotion.forward();
+      } else if (widget.initialStage == ExhibitionStage.parked) {
+        _parkingOutro.value = 1;
+      } else {
+        _parkingOutro.forward(from: 0);
+      }
+    }
+  }
+
+  void _syncParkingStage() {
+    if (!mounted || _stage.index < ExhibitionStage.entry.index) return;
+    final p = _parkingMotion.value;
+    final next = p < parkingEntryEnd
+        ? ExhibitionStage.entry
+        : p < parkingTopViewEnd
+        ? ExhibitionStage.zoneGuidance
+        : p < parkingReverseStart
+        ? ExhibitionStage.approach
+        : p < 1
+        ? ExhibitionStage.reversing
+        : ExhibitionStage.parked;
+    if (next != _stage) {
+      setState(() => _stage = next);
+      if (next == ExhibitionStage.parked) _parkingOutro.forward(from: 0);
     }
   }
 
@@ -111,6 +165,8 @@ class _ExhibitionState extends State<Exhibition>
       case ExhibitionStage.zoneGuidance:
         _go(ExhibitionStage.approach);
       case ExhibitionStage.approach:
+        _go(ExhibitionStage.reversing);
+      case ExhibitionStage.reversing:
         _go(ExhibitionStage.parked);
       case ExhibitionStage.parked:
         _go(ExhibitionStage.home);
@@ -125,6 +181,7 @@ class _ExhibitionState extends State<Exhibition>
     ExhibitionStage.nearParking => '8:37',
     ExhibitionStage.entry => '8:42',
     ExhibitionStage.zoneGuidance || ExhibitionStage.approach => '8:45',
+    ExhibitionStage.reversing => '8:46',
     ExhibitionStage.parked => '8:47',
     _ => '8:10',
   };
@@ -156,9 +213,21 @@ class _ExhibitionState extends State<Exhibition>
                             child: AnimatedSwitcher(
                               duration: const Duration(milliseconds: 800),
                               child: SizedBox.fromSize(
-                                key: ValueKey(_stage),
+                                key: ValueKey(
+                                  _stage.index >= ExhibitionStage.entry.index
+                                      ? 'parking-journey'
+                                      : _stage.name,
+                                ),
                                 size: _canvas,
-                                child: Stack(children: _mapLayers()),
+                                child: AnimatedBuilder(
+                                  animation: Listenable.merge([
+                                    _roadMotion,
+                                    _parkingMotion,
+                                    _parkingOutro,
+                                  ]),
+                                  builder: (context, _) =>
+                                      Stack(children: _mapLayers()),
+                                ),
                               ),
                             ),
                           ),
@@ -241,8 +310,9 @@ class _ExhibitionState extends State<Exhibition>
           ),
         ],
         ExhibitionStage.driving => [
-          _image('assets/driving.png', const Rect.fromLTWH(0, 0, 1920, 720)),
-          const FigmaGraphic('blue_position'),
+          Positioned.fill(
+            child: RoadNavigationMotion(progress: _roadMotion.value),
+          ),
         ],
         ExhibitionStage.changeSuggestion => [
           const FigmaGraphic('change_map'),
@@ -255,23 +325,17 @@ class _ExhibitionState extends State<Exhibition>
           const FigmaGraphic('near_map'),
           const FigmaGraphic('green_position'),
         ],
-        ExhibitionStage.entry => [
-          _image(
-            'assets/parking.png',
-            const Rect.fromLTWH(371.43, 50.256, 1548.57, 588.361),
-          ),
-        ],
-        ExhibitionStage.zoneGuidance => [
-          const FigmaGraphic('inside_map'),
-          const FigmaGraphic('inside_route'),
-        ],
-        ExhibitionStage.approach => [
-          const FigmaGraphic('approach_map'),
-          const FigmaGraphic('approach_route', clipHeight: 310),
-          const FigmaGraphic('approach_position'),
-        ],
+        ExhibitionStage.entry ||
+        ExhibitionStage.zoneGuidance ||
+        ExhibitionStage.approach ||
+        ExhibitionStage.reversing ||
         ExhibitionStage.parked => [
-          _image('assets/parked.png', const Rect.fromLTWH(90, 0, 1830, 720)),
+          Positioned.fill(
+            child: ParkingJourney(
+              progress: _parkingMotion.value,
+              completionProgress: _parkingOutro.value,
+            ),
+          ),
         ],
       },
     ];
@@ -371,18 +435,28 @@ class _ExhibitionState extends State<Exhibition>
       const FigmaGraphic('legend'),
     ],
     ExhibitionStage.zoneGuidance => [
-      _banner('추천 구역으로 안내', 'J구역까지 150m'),
+      AnimatedBuilder(
+        animation: _parkingMotion,
+        builder: (context, _) => _banner(
+          '추천 구역으로 안내',
+          'J구역까지 ${ParkingMotionFrame(_parkingMotion.value).metersRemaining}m',
+        ),
+      ),
       ..._parkingControls(),
       const FigmaGraphic('legend'),
     ],
     ExhibitionStage.approach => [
-      _banner('주차각이 나왔어요', 'J구역까지 100m'),
+      _banner('주차각이 나왔어요', 'J-05 · 후진 주차 준비'),
+      ..._parkingControls(),
+    ],
+    ExhibitionStage.reversing => [
+      _banner('후진 주차 중', 'J-05 · 주변을 확인하세요'),
       ..._parkingControls(),
     ],
     ExhibitionStage.parked => [
       _banner('J-05', '주차 완료'),
       ..._parkingControls(),
-      const FigmaGraphic('legend'),
+      if (_parkingOutro.isCompleted) const FigmaGraphic('legend'),
     ],
   };
 

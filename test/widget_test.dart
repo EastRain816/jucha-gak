@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jucha_gak/main.dart';
+import 'package:jucha_gak/navigation_motion.dart';
 
 Future<void> ready(WidgetTester tester) async {
   await tester.runAsync(
@@ -55,30 +56,28 @@ void main() {
     expect(find.text('주차 안내 계속'), findsNothing);
     expect(find.text('성곡교차로 방면'), findsOneWidget);
     expect(find.text('8:40'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 8));
+    await tester.pump(const Duration(seconds: 12));
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('빠른 주차로\n바꾸면 12분 빨라요'), findsOneWidget);
     await tap(tester, '기준 바꾸기');
     expect(find.text('요금(1h)'), findsOneWidget);
     await tap(tester, '선택');
     expect(find.text('층별 빈자리'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(seconds: 12));
     await ready(tester);
     expect(find.text('추천 구역으로 안내'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 7));
+    await tester.pump(const Duration(seconds: 18));
     await ready(tester);
     expect(find.text('주차각이 나왔어요'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate(
-        (w) =>
-            w is Image &&
-            w.image == const AssetImage('assets/figma/approach_map.png'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(ParkingJourney), findsOneWidget);
     await tester.pump(const Duration(seconds: 8));
     await ready(tester);
+    expect(find.text('후진 주차 중'), findsOneWidget);
+    expect(find.byType(SurroundParkingView), findsOneWidget);
+    await tester.pump(const Duration(seconds: 14));
+    await ready(tester);
     expect(find.text('주차 완료'), findsOneWidget);
+    expect(find.byType(SurroundParkingView), findsNothing);
     await tester.tap(find.bySemanticsLabel('전시 다시 시작'));
     await ready(tester);
     expect(find.text('검색'), findsOneWidget);
@@ -110,6 +109,53 @@ void main() {
     await tester.pump(const Duration(seconds: 12));
     expect(find.text('250m · 3대 가는 중'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('주차 이동은 구간 경계에서 이어지고 서라운드 뷰는 후진에 나타난다', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1194, 834));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.entry),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    var frame = ParkingMotionFrame(
+      tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
+    );
+    expect(frame.topPose.position.dx, greaterThan(190));
+    expect(frame.viewBlend, 0);
+    expect(find.byType(SurroundParkingView), findsNothing);
+    await tester.pump(const Duration(seconds: 26));
+    frame = ParkingMotionFrame(
+      tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
+    );
+    expect(frame.viewBlend, inExclusiveRange(0, 1));
+    await tester.pump(const Duration(seconds: 10));
+    frame = ParkingMotionFrame(
+      tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
+    );
+    expect(frame.viewBlend, 1);
+    expect(frame.reverseProgress, greaterThan(0));
+    expect(find.byType(SurroundParkingView), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('전시 다시 시작'));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 60));
+    expect(find.text('검색'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('전진에서 후진으로 바뀌어도 차량 위치가 튀지 않는다', () {
+    final before = ParkingMotionFrame(parkingReverseStart - .000001)
+        .perspectivePose;
+    final after = ParkingMotionFrame(parkingReverseStart).perspectivePose;
+    expect((before.position - after.position).distance, lessThan(.1));
+    final finalPose = ParkingMotionFrame(1).perspectivePose;
+    expect(
+      (finalPose.position - const Offset(620, 470)).distance,
+      lessThan(.01),
+    );
+    final nearEnd = ParkingMotionFrame(.999).perspectivePose;
+    expect((nearEnd.position - finalPose.position).distance, lessThan(1));
   });
 
   testWidgets('전 화면을 iPad 비율과 큰 시스템 글자에서 넘침 없이 그린다', (tester) async {

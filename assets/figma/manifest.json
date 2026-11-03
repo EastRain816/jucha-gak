@@ -216,5 +216,36 @@
     "y": 18.767,
     "w": 103.4,
     "h": 93.8
+  },
+  "parking_car": {
+    "nodeId": "262:60856",
+    "file": "assets/figma/parking_car.svg",
+    "use": "perspective vehicle sprite"
+  },
+  "parking_car_blue": {
+    "nodeId": "262:61040",
+    "file": "assets/figma/parking_car_blue.svg",
+    "use": "perspective parked vehicle sprite"
+  },
+  "parking_target": {
+    "nodeId": "262:61132",
+    "file": "assets/figma/parking_target.svg",
+    "use": "target bay and parking pin"
+  },
+  "status_0846": {
+    "nodeId": "262:61846",
+    "file": "assets/figma/status_0846.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "surround_view": {
+    "nodeId": "262:61865",
+    "file": "assets/figma/surround_view.png",
+    "x": 1460.039,
+    "y": 0,
+    "w": 459.961,
+    "h": 720
   }
 }
