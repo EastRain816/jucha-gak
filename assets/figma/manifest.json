@@ -1,0 +1,220 @@
+{
+  "change_map": {
+    "id": "262:50815",
+    "x": 0,
+    "y": 0,
+    "w": 1920,
+    "h": 720,
+    "file": "assets/figma/change_map.png",
+    "nodeId": "262:50815"
+  },
+  "near_map": {
+    "id": "262:49932",
+    "x": 0,
+    "y": 0,
+    "w": 1920,
+    "h": 720,
+    "file": "assets/figma/near_map.png",
+    "nodeId": "262:49932"
+  },
+  "inside_map": {
+    "id": "262:45156",
+    "x": 193.9765625,
+    "y": 0,
+    "w": 1425.89453125,
+    "h": 720,
+    "file": "assets/figma/inside_map.png",
+    "nodeId": "262:45156"
+  },
+  "inside_route": {
+    "id": "262:45187",
+    "x": 1289.28515625,
+    "y": 0,
+    "w": 125.80859375,
+    "h": 589.294921875,
+    "file": "assets/figma/inside_route.svg",
+    "nodeId": "262:45187"
+  },
+  "approach_map": {
+    "id": "262:45231",
+    "x": 424.96484375,
+    "y": 0,
+    "w": 1118.078125,
+    "h": 720,
+    "file": "assets/figma/approach_map.png",
+    "nodeId": "262:45231"
+  },
+  "approach_route": {
+    "id": "262:45217",
+    "x": 903.6875,
+    "y": 303.87109375,
+    "w": 194.33984375,
+    "h": 416.12890625,
+    "file": "assets/figma/approach_route.svg",
+    "nodeId": "262:45217"
+  },
+  "blue_position": {
+    "id": "262:62155",
+    "x": 1257.93359375,
+    "y": 595.8071032054986,
+    "w": 67.14775083888526,
+    "h": 61.49186217034821,
+    "file": "assets/figma/blue_position.svg",
+    "nodeId": "262:62155"
+  },
+  "green_position": {
+    "id": "262:50169",
+    "x": 1341.4765625,
+    "y": 543.4729040735765,
+    "w": 84.81387649589306,
+    "h": 77.66995790404508,
+    "file": "assets/figma/green_position.svg",
+    "nodeId": "262:50169"
+  },
+  "logo": {
+    "id": "262:51070",
+    "x": 225.92578125,
+    "y": 136.22314453125,
+    "w": 69.10171508789062,
+    "h": 43.588077545166016,
+    "file": "assets/figma/logo.svg",
+    "nodeId": "262:51070"
+  },
+  "card_background": {
+    "id": "262:51066",
+    "x": 160.91796875,
+    "y": 30.4453125,
+    "w": 798.5234375,
+    "h": 662.17578125,
+    "file": "assets/figma/card_background.svg",
+    "nodeId": "262:51066"
+  },
+  "banner_background": {
+    "id": "262:45206",
+    "x": 160.23828125,
+    "y": 30.412109375,
+    "w": 798.5234375,
+    "h": 202.17578125,
+    "file": "assets/figma/banner_background.svg",
+    "nodeId": "262:45206"
+  },
+  "microphone": {
+    "id": "262:44563",
+    "x": 141.4453125,
+    "y": 559.09375,
+    "w": 152.640625,
+    "h": 152.638671875,
+    "file": "assets/figma/microphone.svg",
+    "nodeId": "262:44563"
+  },
+  "recenter": {
+    "id": "262:44558",
+    "x": 275.8828125,
+    "y": 559.09375,
+    "w": 152.640625,
+    "h": 152.638671875,
+    "file": "assets/figma/recenter.svg",
+    "nodeId": "262:44558"
+  },
+  "legend": {
+    "id": "262:44551",
+    "x": 1410.3984375,
+    "y": 30.2880859375,
+    "w": 489,
+    "h": 63,
+    "file": "assets/figma/legend.svg",
+    "nodeId": "262:44551"
+  },
+  "grid": {
+    "id": "262:50220",
+    "x": 18.69921875,
+    "y": 635.4135131835938,
+    "w": 96.00000762939453,
+    "h": 46.933349609375,
+    "file": "assets/figma/grid.svg",
+    "nodeId": "262:50220"
+  },
+  "turn_right": {
+    "id": "262:62176",
+    "x": 224.52734375,
+    "y": 61.80029296875,
+    "w": 99.22265625,
+    "h": 93.69384765625,
+    "file": "assets/figma/turn_right.svg",
+    "nodeId": "262:62176"
+  },
+  "turn_left": {
+    "id": "262:62172",
+    "x": 207.3203125,
+    "y": 281.26953125,
+    "w": 22,
+    "h": 27.86572265625,
+    "file": "assets/figma/turn_left.svg",
+    "nodeId": "262:62172"
+  },
+  "approach_position": {
+    "id": "262:45232",
+    "nodeId": "262:45232",
+    "file": "assets/figma/approach_position.svg",
+    "x": 980.902344,
+    "y": 536.86718,
+    "w": 177.699219,
+    "h": 152.950203
+  },
+  "status_0810": {
+    "nodeId": "262:50215",
+    "file": "assets/figma/status_0810.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0818": {
+    "nodeId": "262:62148",
+    "file": "assets/figma/status_0818.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0830": {
+    "nodeId": "262:51055",
+    "file": "assets/figma/status_0830.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0837": {
+    "nodeId": "262:50175",
+    "file": "assets/figma/status_0837.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0842": {
+    "nodeId": "262:44543",
+    "file": "assets/figma/status_0842.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0845": {
+    "nodeId": "262:45160",
+    "file": "assets/figma/status_0845.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  },
+  "status_0847": {
+    "nodeId": "262:58885",
+    "file": "assets/figma/status_0847.svg",
+    "x": 15,
+    "y": 18.767,
+    "w": 103.4,
+    "h": 93.8
+  }
+}
