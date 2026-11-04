@@ -139,9 +139,10 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
   void _syncParkingStage() {
     if (!mounted || _stage.index < ExhibitionStage.entry.index) return;
     final p = _parkingMotion.value;
+    final enteredJ = ParkingMotionFrame(p).hasEnteredJ;
     final next = p < parkingEntryEnd
         ? ExhibitionStage.entry
-        : p < parkingTopViewEnd
+        : !enteredJ
         ? ExhibitionStage.zoneGuidance
         : p < parkingReverseStart
         ? ExhibitionStage.approach

@@ -7,7 +7,11 @@ import 'figma_graphics.dart';
 
 const parkingDriveDuration = Duration(seconds: 52);
 const parkingEntryEnd = 12 / 52;
-const parkingTopViewEnd = 30 / 52;
+const _parkingRouteEnd = 30 / 52;
+const parkingJEntranceX = 903.0;
+// Derive the boundary from the route, so changing its speed or length cannot
+// make the 3D view start after the vehicle has already entered J.
+final parkingTopViewEnd = _findJEntryProgress();
 const parkingReverseStart = 38 / 52;
 
 // All coordinates belong to the original Figma lot, not to the iPad screen.
@@ -48,6 +52,20 @@ VehiclePose sampleDrive(Path path, double progress, {bool reverse = false}) {
   );
 }
 
+double _findJEntryProgress() {
+  var before = 0.0;
+  var after = _parkingRouteEnd;
+  for (var i = 0; i < 48; i++) {
+    final middle = (before + after) / 2;
+    if (ParkingMotionFrame(middle).hasEnteredJ) {
+      after = middle;
+    } else {
+      before = middle;
+    }
+  }
+  return after;
+}
+
 double _segment(double p, double start, double end) =>
     ((p - start) / (end - start)).clamp(0.0, 1.0);
 double _smooth(double p) => p * p * (3 - 2 * p);
@@ -59,15 +77,15 @@ class ParkingMotionFrame {
   ParkingMotionFrame(this.progress, {this.completionProgress = 0});
   final double progress;
   final double completionProgress;
-  double get topProgress => _segment(progress, 0, parkingTopViewEnd);
+  double get topProgress => _segment(progress, 0, _parkingRouteEnd);
   double get approachProgress =>
       _segment(progress, parkingTopViewEnd, parkingReverseStart);
   double get reverseProgress => _segment(progress, parkingReverseStart, 1);
-  double get viewBlend => _smooth(_segment(approachProgress, 0, .25));
-  // At the end of the top view, settle on Figma frame 262:45155 before
-  // switching to the original 3D illustration in frame 262:45216.
-  double get topKeyframeBlend => _smooth(_segment(topProgress, .9, 1));
   VehiclePose get topPose => sampleDrive(parkingAisle, _smooth(topProgress));
+  bool get hasEnteredJ =>
+      topPose.position.dx >= parkingJEntranceX && topPose.position.dy >= 460;
+  // The full original 3D keyframe appears on the first frame inside J.
+  double get viewBlend => hasEnteredJ ? 1 : 0;
 
   int get metersRemaining => ((1 - topProgress) * 150).round();
 }
@@ -117,24 +135,7 @@ class ParkingJourney extends StatelessWidget {
       progress,
       completionProgress: completionProgress,
     );
-    final topView = Stack(
-      children: [
-        if (frame.topKeyframeBlend < 1)
-          Positioned.fill(
-            child: Opacity(
-              opacity: 1 - frame.topKeyframeBlend,
-              child: _TopView(frame: frame),
-            ),
-          ),
-        if (frame.topKeyframeBlend > 0)
-          Positioned.fill(
-            child: Opacity(
-              opacity: frame.topKeyframeBlend,
-              child: const _TopViewKeyframe(),
-            ),
-          ),
-      ],
-    );
+    final topView = _TopView(frame: frame);
     final parkingComplete = progress >= 1;
     final cameras = progress >= parkingReverseStart && !parkingComplete;
     return ClipRect(
@@ -178,14 +179,6 @@ class ParkingJourney extends StatelessWidget {
 
 // These are original Figma graphics in their original design slots. No rows
 // of replacement cars, custom parking spaces or simulated camera guides.
-class _TopViewKeyframe extends StatelessWidget {
-  const _TopViewKeyframe();
-  @override
-  Widget build(BuildContext context) => const Stack(
-    children: [FigmaGraphic('inside_map'), FigmaGraphic('inside_route')],
-  );
-}
-
 class _ApproachKeyframe extends StatelessWidget {
   const _ApproachKeyframe();
   @override
@@ -236,11 +229,7 @@ class _TopView extends StatelessWidget {
       const Offset(1220, 540),
       follow,
     )!;
-    final anchor = Offset.lerp(
-      followingAnchor,
-      const Offset(1353, 527),
-      frame.topKeyframeBlend,
-    )!;
+    final anchor = followingAnchor;
     final zoom = _mix(1, 2.65, follow);
     final rotation = -pose.heading * follow;
     final transform = Matrix4.identity()

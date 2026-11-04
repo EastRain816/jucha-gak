@@ -130,7 +130,8 @@ void main() {
     frame = ParkingMotionFrame(
       tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
     );
-    expect(frame.viewBlend, inExclusiveRange(0, 1));
+    expect(frame.hasEnteredJ, isTrue);
+    expect(frame.viewBlend, 1);
     await tester.pump(const Duration(seconds: 10));
     frame = ParkingMotionFrame(
       tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
@@ -143,6 +144,52 @@ void main() {
     await tester.pump(const Duration(seconds: 60));
     expect(find.text('검색'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('J 진입 경계를 넘는 첫 프레임에 탑뷰가 사라지고 피그마 3D뷰가 표시된다', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1194, 834));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final entryTime = parkingDriveDuration.inMicroseconds * parkingTopViewEnd;
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.entry),
+    );
+    await tester.pump();
+    await tester.pump(Duration(microseconds: entryTime.floor() - 2000));
+    var frame = ParkingMotionFrame(
+      tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
+    );
+    expect(frame.topPose.position.dx, lessThan(parkingJEntranceX));
+    expect(frame.viewBlend, 0);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image == const AssetImage('assets/figma/approach_map.png'),
+      ),
+      findsNothing,
+    );
+    await tester.pump(const Duration(milliseconds: 4));
+    frame = ParkingMotionFrame(
+      tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
+    );
+    expect(frame.topPose.position.dx, greaterThanOrEqualTo(parkingJEntranceX));
+    expect(frame.viewBlend, 1);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image == const AssetImage('assets/figma/approach_map.png'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Image && w.image == const AssetImage('assets/parking.png'),
+      ),
+      findsNothing,
+    );
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await tester.pumpWidget(const SizedBox());
   });
 
   test('동선은 통로 중심의 직선 세 구간으로 이동하며 주차면을 가로지르지 않는다', () {
