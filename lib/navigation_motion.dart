@@ -12,18 +12,13 @@ const parkingReverseStart = 38 / 52;
 
 // All coordinates belong to the original Figma lot, not to the iPad screen.
 // This keeps the car on the aisles while the camera zooms and rotates.
-// Traced from the user's annotated overview, converted back into the
-// original 1548.57 × 588.361 map coordinates. The entrance goes up/right,
-// then down/right to the aisle below H/I/J and above L/M.
+// Three straight aisle-center segments in the original map coordinates:
+// entrance -> entrance corner -> lower aisle -> J zone.
 Path get parkingAisle => Path()
   ..moveTo(244, 351)
-  ..lineTo(322, 280)
-  ..quadraticBezierTo(333, 269, 344, 279)
-  ..cubicTo(425, 344, 508, 405, 566, 468)
-  ..quadraticBezierTo(577, 482, 596, 484)
-  ..cubicTo(650, 493, 710, 489, 770, 492)
-  ..cubicTo(825, 495, 891, 478, 947, 479)
-  ..quadraticBezierTo(1004, 478, 1066, 482);
+  ..lineTo(333, 273)
+  ..lineTo(580, 480)
+  ..lineTo(1066, 480);
 
 class VehiclePose {
   const VehiclePose(this.position, this.heading);
@@ -35,12 +30,20 @@ class VehiclePose {
 
 VehiclePose sampleDrive(Path path, double progress, {bool reverse = false}) {
   final metric = path.computeMetrics().first;
-  final tangent = metric.getTangentForOffset(
-    metric.length * progress.clamp(0, 1),
+  final distance = metric.length * progress.clamp(0, 1);
+  final tangent = metric.getTangentForOffset(distance)!;
+  // Smooth only the heading around a corner; position stays on the straight
+  // segments. Otherwise the following camera would snap at each vertex.
+  final before = metric.getTangentForOffset(
+    (distance - 18).clamp(0, metric.length),
   )!;
+  final after = metric.getTangentForOffset(
+    (distance + 18).clamp(0, metric.length),
+  )!;
+  final direction = after.position - before.position;
   return VehiclePose(
     tangent.position,
-    math.atan2(tangent.vector.dy, tangent.vector.dx) +
+    math.atan2(direction.dy, direction.dx) +
         (reverse ? -math.pi / 2 : math.pi / 2),
   );
 }

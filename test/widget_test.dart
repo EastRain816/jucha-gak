@@ -145,7 +145,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('첨부 동선은 입구에서 J 아래 통로를 따라가며 주차면을 가로지르지 않는다', () {
+  test('동선은 통로 중심의 직선 세 구간으로 이동하며 주차면을 가로지르지 않는다', () {
     // Independent geometry from the original parking-map outline and bay rows.
     final boundary = Path()
       ..addPolygon(const [
@@ -177,6 +177,14 @@ void main() {
       Rect.fromLTWH(620, 505, 660, 40),
     ];
     final metric = parkingAisle.computeMetrics().first;
+    final straightLength =
+        (const Offset(333, 273) - const Offset(244, 351)).distance +
+        (const Offset(580, 480) - const Offset(333, 273)).distance +
+        486;
+    expect(metric.length, closeTo(straightLength, .001));
+    for (double d = metric.length - 486; d <= metric.length; d += 2) {
+      expect(metric.getTangentForOffset(d)!.position.dy, closeTo(480, .001));
+    }
     final start = sampleDrive(parkingAisle, 0).position;
     expect((start - const Offset(244, 351)).distance, lessThan(.01));
     // The first bend must travel up/right through the entrance, as annotated.
