@@ -304,5 +304,54 @@
     "w": 1118,
     "h": 1289.272705,
     "export": "Full original 3D artwork including offscreen content; navigation marker 262:45232 exported separately as approach_position.svg. Temporary export clone removed."
+  },
+  "waiting_map": {
+    "nodeId": "262:47541",
+    "file": "assets/figma/waiting_map.png",
+    "x": 371.386719,
+    "y": 0,
+    "w": 1298.792969,
+    "h": 720
+  },
+  "occupied_map": {
+    "nodeId": "262:51093",
+    "file": "assets/figma/occupied_map.png",
+    "x": 424.964844,
+    "y": 0,
+    "w": 1118.078125,
+    "h": 720
+  },
+  "opportunity_map": {
+    "nodeId": "262:53417",
+    "file": "assets/figma/opportunity_map.png",
+    "x": 637.222656,
+    "y": 0,
+    "w": 1282.777344,
+    "h": 720
+  },
+  "relocation_scene": {
+    "nodeId": "262:58923",
+    "file": "assets/figma/relocation_scene.png",
+    "x": -100,
+    "y": -548.509766,
+    "w": 1895.96875,
+    "h": 1928.971191,
+    "export": "Full original scene with navigation marker 262:58924 separated; temporary export nodes removed."
+  },
+  "departure_pin": {
+    "nodeId": "262:49902",
+    "file": "assets/figma/departure_pin.svg",
+    "x": 746.566406,
+    "y": 112.006836,
+    "w": 114.640625,
+    "h": 131.904297
+  },
+  "opportunity_background": {
+    "nodeId": "357:88594",
+    "file": "assets/figma/opportunity_background.svg",
+    "x": 162,
+    "y": 30.412109,
+    "w": 798.761719,
+    "h": 662.175781
   }
 }

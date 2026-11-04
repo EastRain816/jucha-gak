@@ -5,14 +5,49 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'figma_graphics.dart';
 
-const parkingDriveDuration = Duration(seconds: 52);
-const parkingEntryEnd = 12 / 52;
-const _parkingRouteEnd = 30 / 52;
 const parkingJEntranceX = 903.0;
-// Derive the boundary from the route, so changing its speed or length cannot
-// make the 3D view start after the vehicle has already entered J.
-final parkingTopViewEnd = _findJEntryProgress();
-const parkingReverseStart = 38 / 52;
+const parking3DSpeed = 1.3;
+final _jEntrySeconds = _findJEntrySeconds();
+// Preserve the existing top-view speed; shorten only the 3D drive by 1 / 1.3.
+final parkingApproachSeconds = (38 - _jEntrySeconds) / parking3DSpeed;
+
+enum ParkingPhase {
+  entry,
+  zoneGuidance,
+  approach,
+  spaceOccupied,
+  waitingForDeparture,
+  opportunityNotice,
+  parkingOpportunity,
+  continueWaiting,
+  relocation,
+  reversing,
+  parked,
+}
+
+final _parkingPhaseSeconds = <ParkingPhase, double>{
+  ParkingPhase.entry: 0,
+  ParkingPhase.zoneGuidance: 12,
+  ParkingPhase.approach: _jEntrySeconds,
+  ParkingPhase.spaceOccupied: _jEntrySeconds + parkingApproachSeconds,
+  ParkingPhase.waitingForDeparture: _jEntrySeconds + parkingApproachSeconds + 3,
+  ParkingPhase.opportunityNotice: _jEntrySeconds + parkingApproachSeconds + 11,
+  ParkingPhase.parkingOpportunity: _jEntrySeconds + parkingApproachSeconds + 14,
+  ParkingPhase.continueWaiting: _jEntrySeconds + parkingApproachSeconds + 20,
+  ParkingPhase.relocation: _jEntrySeconds + parkingApproachSeconds + 24,
+  ParkingPhase.reversing: _jEntrySeconds + parkingApproachSeconds * 2 + 24,
+  ParkingPhase.parked: _jEntrySeconds + parkingApproachSeconds * 2 + 38,
+};
+final parkingDriveDuration = Duration(
+  microseconds: (_parkingPhaseSeconds[ParkingPhase.parked]! * 1000000).round(),
+);
+double parkingPhaseStart(ParkingPhase phase) => phase == ParkingPhase.parked
+    ? 1
+    : _parkingPhaseSeconds[phase]! /
+          (parkingDriveDuration.inMicroseconds / 1000000);
+final parkingEntryEnd = parkingPhaseStart(ParkingPhase.zoneGuidance);
+final parkingTopViewEnd = parkingPhaseStart(ParkingPhase.approach);
+final parkingReverseStart = parkingPhaseStart(ParkingPhase.reversing);
 
 // The opening 3D pose is the exact Figma 262:45216 composition. Move through
 // that illustration's clear aisle towards its original P-marked parking bay.
@@ -62,12 +97,13 @@ VehiclePose sampleDrive(Path path, double progress, {bool reverse = false}) {
   );
 }
 
-double _findJEntryProgress() {
+double _findJEntrySeconds() {
   var before = 0.0;
-  var after = _parkingRouteEnd;
+  var after = 30.0;
   for (var i = 0; i < 48; i++) {
     final middle = (before + after) / 2;
-    if (ParkingMotionFrame(middle).hasEnteredJ) {
+    final pose = sampleDrive(parkingAisle, _smooth(middle / 30));
+    if (pose.position.dx >= parkingJEntranceX && pose.position.dy >= 460) {
       after = middle;
     } else {
       before = middle;
@@ -81,15 +117,28 @@ double _segment(double p, double start, double end) =>
 double _smooth(double p) => p * p * (3 - 2 * p);
 double _mix(double a, double b, double t) => a + (b - a) * t;
 
-/// One continuous timeline covers entry, top view, 3D approach and reversing.
-/// Stage labels change at boundaries, but the car/camera never restart there.
+/// A single timeline includes the missed space, departure wait, new opportunity,
+/// and relocation. Waiting never accidentally advances into reverse parking.
 class ParkingMotionFrame {
   ParkingMotionFrame(this.progress, {this.completionProgress = 0});
   final double progress;
   final double completionProgress;
-  double get topProgress => _segment(progress, 0, _parkingRouteEnd);
-  double get approachProgress =>
-      _segment(progress, parkingTopViewEnd, parkingReverseStart);
+  double get topProgress =>
+      (progress * parkingDriveDuration.inMicroseconds / 30000000).clamp(0, 1);
+  ParkingPhase get phase => ParkingPhase.values.lastWhere(
+    (phase) => progress >= parkingPhaseStart(phase),
+    orElse: () => ParkingPhase.entry,
+  );
+  double get approachProgress => _segment(
+    progress,
+    parkingTopViewEnd,
+    parkingPhaseStart(ParkingPhase.spaceOccupied),
+  );
+  double get relocationProgress => _segment(
+    progress,
+    parkingPhaseStart(ParkingPhase.relocation),
+    parkingReverseStart,
+  );
   double get reverseProgress => _segment(progress, parkingReverseStart, 1);
   VehiclePose get topPose => sampleDrive(parkingAisle, _smooth(topProgress));
   bool get hasEnteredJ =>
@@ -156,27 +205,22 @@ class ParkingJourney extends StatelessWidget {
       progress,
       completionProgress: completionProgress,
     );
-    final topView = _TopView(frame: frame);
     final parkingComplete = progress >= 1;
     final cameras = progress >= parkingReverseStart && !parkingComplete;
+    final Widget drivingView = switch (frame.phase) {
+      ParkingPhase.entry || ParkingPhase.zoneGuidance => _TopView(frame: frame),
+      ParkingPhase.approach => ParkingApproachMotion(frame: frame),
+      ParkingPhase.relocation => ParkingRelocationMotion(
+        progress: frame.relocationProgress,
+      ),
+      _ => ParkingScenarioStill(phase: frame.phase),
+    };
     return ClipRect(
       child: Stack(
         children: [
           const Positioned.fill(child: ColoredBox(color: Color(0xffe4e2dc))),
           if (cameras) const Positioned.fill(child: ParkingCameraStill()),
-          if (!cameras && !parkingComplete) ...[
-            if (frame.viewBlend < 1)
-              Positioned.fill(
-                child: Opacity(opacity: 1 - frame.viewBlend, child: topView),
-              ),
-            if (frame.viewBlend > 0)
-              Positioned.fill(
-                child: Opacity(
-                  opacity: frame.viewBlend,
-                  child: ParkingApproachMotion(frame: frame),
-                ),
-              ),
-          ],
+          if (!cameras && !parkingComplete) Positioned.fill(child: drivingView),
           if (parkingComplete) ...[
             if (completionProgress < 1)
               Positioned.fill(
@@ -242,6 +286,140 @@ class ParkingApproachMotion extends StatelessWidget {
       ),
     ],
   );
+}
+
+/// Static moments use the original Figma 17 / 14 / 18 illustrations. In the
+/// departure view all spaces remain occupied; the pins describe future exits.
+class ParkingScenarioStill extends StatelessWidget {
+  const ParkingScenarioStill({super.key, required this.phase});
+  final ParkingPhase phase;
+  @override
+  Widget build(BuildContext context) {
+    if (phase == ParkingPhase.spaceOccupied) {
+      return Stack(
+        children: [
+          Positioned.fromRect(
+            rect: const Rect.fromLTWH(424.964844, 0, 1118.078125, 720),
+            child: Image.asset('assets/figma/occupied_map.png'),
+          ),
+          Positioned.fill(
+            child: Transform.translate(
+              offset: const Offset(-20, -31.000977),
+              child: const Stack(
+                children: [FigmaGraphic('approach_route', clipHeight: 326)],
+              ),
+            ),
+          ),
+          Positioned.fromRect(
+            rect: const Rect.fromLTWH(
+              963.40625,
+              523.244133,
+              177.699219,
+              152.949837,
+            ),
+            child: SvgPicture.asset('assets/figma/approach_position.svg'),
+          ),
+        ],
+      );
+    }
+    if (phase == ParkingPhase.parkingOpportunity) {
+      return Stack(
+        children: [
+          Positioned.fromRect(
+            rect: const Rect.fromLTWH(637.222656, 0, 1282.777344, 720),
+            child: Image.asset('assets/figma/opportunity_map.png'),
+          ),
+        ],
+      );
+    }
+    return Semantics(
+      label: '출차 예정 차량: 5분 후 출차, 6분 후 출차',
+      child: Stack(
+        children: [
+          Positioned.fromRect(
+            rect: const Rect.fromLTWH(371.386719, 0, 1298.792969, 720),
+            child: Image.asset('assets/figma/waiting_map.png'),
+          ),
+          Positioned.fromRect(
+            rect: const Rect.fromLTWH(
+              746.566406,
+              112.006836,
+              114.640625,
+              131.904297,
+            ),
+            child: SvgPicture.asset('assets/figma/departure_pin.svg'),
+          ),
+          const Positioned(
+            left: 789.837341,
+            top: 147.055405,
+            width: 31,
+            height: 29,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '6분',
+                style: TextStyle(
+                  fontFamily: 'NotoSansKR',
+                  fontSize: 20.338,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xfff6f7fc),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Drive towards the newly available bay. The final pose is the original
+/// Figma 19 composition, immediately before the still rear/surround cameras.
+class ParkingRelocationMotion extends StatelessWidget {
+  const ParkingRelocationMotion({super.key, required this.progress});
+  final double progress;
+  @override
+  Widget build(BuildContext context) {
+    final t = _smooth(progress);
+    final camera = Offset(0, -140 * (1 - t));
+    final marker = Offset(753.962891, _mix(700, 316.746554, t)) + camera;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Transform.translate(
+            key: const ValueKey('relocation-camera'),
+            offset: camera,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fromRect(
+                  rect: const Rect.fromLTWH(
+                    -100,
+                    -548.509766,
+                    1895.96875,
+                    1928.971191,
+                  ),
+                  child: Image.asset(
+                    'assets/figma/relocation_scene.png',
+                    fit: BoxFit.fill,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned.fromRect(
+          key: const ValueKey('relocation-position'),
+          rect: Rect.fromCenter(
+            center: marker,
+            width: 243.761719,
+            height: 209.813441,
+          ),
+          child: SvgPicture.asset('assets/figma/approach_position.svg'),
+        ),
+      ],
+    );
+  }
 }
 
 class _ParkedKeyframe extends StatelessWidget {

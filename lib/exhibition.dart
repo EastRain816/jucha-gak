@@ -23,6 +23,12 @@ enum ExhibitionStage {
   entry,
   zoneGuidance,
   approach,
+  spaceOccupied,
+  waitingForDeparture,
+  opportunityNotice,
+  parkingOpportunity,
+  continueWaiting,
+  relocation,
   reversing,
   parked,
 }
@@ -52,7 +58,15 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
     if (_parkingArtworkCached) return;
     _parkingArtworkCached = true;
     // Decode before reaching J, so the first 3D frame has its full artwork.
-    precacheImage(const AssetImage('assets/figma/approach_scene.png'), context);
+    for (final name in [
+      'approach_scene',
+      'occupied_map',
+      'waiting_map',
+      'opportunity_map',
+      'relocation_scene',
+    ]) {
+      precacheImage(AssetImage('assets/figma/$name.png'), context);
+    }
   }
 
   @override
@@ -128,13 +142,7 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
     if (_stage == ExhibitionStage.driving) {
       _roadMotion.forward(from: 0);
     } else if (_stage.index >= ExhibitionStage.entry.index) {
-      final start = switch (_stage) {
-        ExhibitionStage.entry => 0.0,
-        ExhibitionStage.zoneGuidance => parkingEntryEnd,
-        ExhibitionStage.approach => parkingTopViewEnd,
-        ExhibitionStage.reversing => parkingReverseStart,
-        _ => 1.0,
-      };
+      final start = parkingPhaseStart(ParkingPhase.values.byName(_stage.name));
       _parkingMotion.value = start;
       if (start < 1) {
         _parkingMotion.forward();
@@ -149,16 +157,9 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
   void _syncParkingStage() {
     if (!mounted || _stage.index < ExhibitionStage.entry.index) return;
     final p = _parkingMotion.value;
-    final enteredJ = ParkingMotionFrame(p).hasEnteredJ;
-    final next = p < parkingEntryEnd
-        ? ExhibitionStage.entry
-        : !enteredJ
-        ? ExhibitionStage.zoneGuidance
-        : p < parkingReverseStart
-        ? ExhibitionStage.approach
-        : p < 1
-        ? ExhibitionStage.reversing
-        : ExhibitionStage.parked;
+    final next = ExhibitionStage.values.byName(
+      ParkingMotionFrame(p).phase.name,
+    );
     if (next != _stage) {
       setState(() => _stage = next);
       if (next == ExhibitionStage.parked) _parkingOutro.forward(from: 0);
@@ -168,17 +169,14 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
   void _continueSuggestion() => _go(ExhibitionStage.nearParking);
 
   void _advanceMap() {
+    if (_stage.index >= ExhibitionStage.entry.index &&
+        _stage.index < ExhibitionStage.parked.index) {
+      _go(ExhibitionStage.values[_stage.index + 1]);
+      return;
+    }
     switch (_stage) {
       case ExhibitionStage.driving:
         _go(ExhibitionStage.changeSuggestion);
-      case ExhibitionStage.entry:
-        _go(ExhibitionStage.zoneGuidance);
-      case ExhibitionStage.zoneGuidance:
-        _go(ExhibitionStage.approach);
-      case ExhibitionStage.approach:
-        _go(ExhibitionStage.reversing);
-      case ExhibitionStage.reversing:
-        _go(ExhibitionStage.parked);
       case ExhibitionStage.parked:
         _go(ExhibitionStage.home);
       default:
@@ -191,7 +189,14 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
     ExhibitionStage.changeSuggestion => '8:30',
     ExhibitionStage.nearParking => '8:37',
     ExhibitionStage.entry => '8:42',
-    ExhibitionStage.zoneGuidance || ExhibitionStage.approach => '8:45',
+    ExhibitionStage.zoneGuidance ||
+    ExhibitionStage.approach ||
+    ExhibitionStage.spaceOccupied ||
+    ExhibitionStage.waitingForDeparture => '8:45',
+    ExhibitionStage.opportunityNotice ||
+    ExhibitionStage.parkingOpportunity ||
+    ExhibitionStage.continueWaiting ||
+    ExhibitionStage.relocation => '8:46',
     ExhibitionStage.reversing => '8:46',
     ExhibitionStage.parked => '8:47',
     _ => '8:10',
@@ -339,6 +344,12 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
         ExhibitionStage.entry ||
         ExhibitionStage.zoneGuidance ||
         ExhibitionStage.approach ||
+        ExhibitionStage.spaceOccupied ||
+        ExhibitionStage.waitingForDeparture ||
+        ExhibitionStage.opportunityNotice ||
+        ExhibitionStage.parkingOpportunity ||
+        ExhibitionStage.continueWaiting ||
+        ExhibitionStage.relocation ||
         ExhibitionStage.reversing ||
         ExhibitionStage.parked => [
           Positioned.fill(
@@ -452,6 +463,24 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
     ],
     ExhibitionStage.approach => [
       _banner('주차각이 나왔어요', 'J구역까지 100m'),
+      ..._parkingControls(),
+    ],
+    ExhibitionStage.spaceOccupied => [
+      _banner('J-11 자리가 찼어요', '다음 주차각을 잡겠습니다'),
+      ..._parkingControls(),
+    ],
+    ExhibitionStage.waitingForDeparture ||
+    ExhibitionStage.continueWaiting => [..._parkingControls()],
+    ExhibitionStage.opportunityNotice => [
+      _banner('주차각이 나왔어요', '현재 포항역 부설 주차장'),
+      ..._parkingControls(),
+    ],
+    ExhibitionStage.parkingOpportunity => [
+      ..._parkingControls(),
+      _parkingOpportunityCard(),
+    ],
+    ExhibitionStage.relocation => [
+      _banner('주차각이 나왔어요', 'J-05 자리로 안내합니다'),
       ..._parkingControls(),
     ],
     ExhibitionStage.reversing => [],
@@ -959,6 +988,79 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
         ],
       ),
     ),
+  );
+
+  Widget _parkingOpportunityCard() => Stack(
+    children: [
+      Positioned(
+        left: 162,
+        top: 30.412109,
+        width: 798.761719,
+        height: 662.175781,
+        child: IgnorePointer(child: _cardGraphic('opportunity_background')),
+      ),
+      _logo(203.261719, 99.607422),
+      _text(
+        '주차각을 \n잡았어요',
+        const Rect.fromLTWH(368.457031, 87.205078, 550, 140),
+        size: 60,
+        weight: 500,
+        spacing: -1.2,
+        lineHeight: 70,
+      ),
+      _text(
+        '현재 포항역 부설 주차장',
+        const Rect.fromLTWH(368.453125, 252.140625, 395, 58),
+        size: 40,
+        color: _secondary,
+      ),
+      _text(
+        '옮기면',
+        const Rect.fromLTWH(328.90625, 355.146484, 138, 72),
+        size: 50,
+        weight: 500,
+        color: const Color(0xffededed),
+        align: Alignment.center,
+      ),
+      _text(
+        '지금·약 8분',
+        const Rect.fromLTWH(306.90625, 432.052734, 182, 52),
+        size: 36,
+        weight: 500,
+        color: const Color(0xffededed),
+        align: Alignment.center,
+      ),
+      _text(
+        '기다리면',
+        const Rect.fromLTWH(628.90625, 355.146484, 184, 72),
+        size: 50,
+        weight: 500,
+        color: _lime,
+        align: Alignment.center,
+      ),
+      _text(
+        '추천·약 3분',
+        const Rect.fromLTWH(629.90625, 432.052734, 182, 52),
+        size: 36,
+        weight: 500,
+        color: const Color(0xffededed),
+        align: Alignment.center,
+      ),
+      Positioned(
+        left: 203.902344,
+        top: 561.320313,
+        width: 349.570313,
+        height: 85.859375,
+        child: _button('다른 곳', () => _go(ExhibitionStage.relocation)),
+      ),
+      Positioned(
+        left: 568.191406,
+        top: 561.320313,
+        width: 349.570313,
+        height: 85.859375,
+        child: _button('계속 대기', () => _go(ExhibitionStage.continueWaiting)),
+      ),
+    ],
   );
 
   Widget _floorPanel() => Positioned(

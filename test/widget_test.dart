@@ -28,6 +28,23 @@ Future<void> tap(WidgetTester tester, String label) async {
   expect(tester.takeException(), isNull, reason: label);
 }
 
+// Advance the running exhibition clock; do not invoke a stage callback. This
+// exercises the actual automatic transitions, including every waiting phase.
+Future<void> seekParking(WidgetTester tester, ParkingPhase phase) async {
+  final current = tester.widget<ParkingJourney>(find.byType(ParkingJourney));
+  final target = parkingDriveDuration.inMicroseconds * parkingPhaseStart(phase);
+  final delta =
+      target.ceil() +
+      100 -
+      (current.progress * parkingDriveDuration.inMicroseconds).round();
+  if (delta > 0) await tester.pump(Duration(microseconds: delta));
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 50)),
+  );
+  await tester.pump();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   WidgetController.hitTestWarningShouldBeFatal = true;
@@ -63,19 +80,42 @@ void main() {
     expect(find.text('요금(1h)'), findsOneWidget);
     await tap(tester, '선택');
     expect(find.text('층별 빈자리'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 12));
-    await ready(tester);
+    await seekParking(tester, ParkingPhase.zoneGuidance);
     expect(find.text('추천 구역으로 안내'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 18));
-    await ready(tester);
+    await seekParking(tester, ParkingPhase.approach);
     expect(find.text('주차각이 나왔어요'), findsOneWidget);
-    expect(find.byType(ParkingJourney), findsOneWidget);
-    await tester.pump(const Duration(seconds: 8));
-    await ready(tester);
+    expect(find.byType(ParkingApproachMotion), findsOneWidget);
+    await seekParking(tester, ParkingPhase.spaceOccupied);
+    expect(find.text('J-11 자리가 찼어요'), findsOneWidget);
+    expect(find.text('다음 주차각을 잡겠습니다'), findsOneWidget);
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.waitingForDeparture);
+    expect(
+      find.bySemanticsLabel(RegExp('출차 예정 차량: 5분 후 출차, 6분 후 출차')),
+      findsOneWidget,
+    );
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.opportunityNotice);
+    expect(find.text('주차각이 나왔어요'), findsOneWidget);
+    await seekParking(tester, ParkingPhase.parkingOpportunity);
+    expect(find.text('주차각을 \n잡았어요'), findsOneWidget);
+    expect(find.text('계속 대기'), findsOneWidget);
+    await seekParking(tester, ParkingPhase.continueWaiting);
+    expect(
+      find.bySemanticsLabel(RegExp('출차 예정 차량: 5분 후 출차, 6분 후 출차')),
+      findsOneWidget,
+    );
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.relocation);
+    expect(find.text('주차각이 나왔어요'), findsOneWidget);
+    expect(find.text('J-05 자리로 안내합니다'), findsOneWidget);
+    expect(find.byType(ParkingRelocationMotion), findsOneWidget);
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.reversing);
     expect(find.byType(ParkingCameraStill), findsOneWidget);
     expect(find.text('후진 주차 중'), findsNothing);
     expect(find.byType(SurroundParkingView), findsOneWidget);
-    await tester.pump(const Duration(seconds: 14));
+    await seekParking(tester, ParkingPhase.parked);
     await ready(tester);
     expect(find.text('주차 완료'), findsOneWidget);
     expect(find.byType(SurroundParkingView), findsNothing);
@@ -126,13 +166,13 @@ void main() {
     expect(frame.topPose.position.dx, greaterThan(190));
     expect(frame.viewBlend, 0);
     expect(find.byType(SurroundParkingView), findsNothing);
-    await tester.pump(const Duration(seconds: 25));
+    await seekParking(tester, ParkingPhase.approach);
     frame = ParkingMotionFrame(
       tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
     );
     expect(frame.hasEnteredJ, isTrue);
     expect(frame.viewBlend, 1);
-    await tester.pump(const Duration(seconds: 10));
+    await seekParking(tester, ParkingPhase.reversing);
     frame = ParkingMotionFrame(
       tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
     );
@@ -261,7 +301,7 @@ void main() {
 
     // Exercise the last second too: the old code was a frozen keyframe here.
     final untilLastSecond =
-        (parkingReverseStart - parkingTopViewEnd) *
+        (parkingPhaseStart(ParkingPhase.spaceOccupied) - parkingTopViewEnd) *
             parkingDriveDuration.inMicroseconds -
         const Duration(seconds: 7).inMicroseconds;
     await tester.pump(Duration(microseconds: untilLastSecond.round()));
@@ -290,9 +330,60 @@ void main() {
     expect(find.byType(ParkingCameraStill), findsNothing);
     await tester.pump(const Duration(milliseconds: 101));
     expect(find.byType(ParkingApproachMotion), findsNothing);
-    expect(find.byType(ParkingCameraStill), findsOneWidget);
-    expect(find.byType(SurroundParkingView), findsOneWidget);
+    expect(find.text('J-11 자리가 찼어요'), findsOneWidget);
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    expect(find.byType(SurroundParkingView), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('3D 주행만 기존보다 정확히 30% 빨라지고 입구 주행 시간은 유지된다', () {
+    final seconds = parkingDriveDuration.inMicroseconds / 1000000;
+    final jEntry = parkingTopViewEnd * seconds;
+    final previous3DSeconds = 38 - jEntry;
+    final current3DSeconds =
+        (parkingPhaseStart(ParkingPhase.spaceOccupied) - parkingTopViewEnd) *
+        seconds;
+    expect(previous3DSeconds / current3DSeconds, closeTo(1.3, .000001));
+    expect(parkingEntryEnd * seconds, closeTo(12, .000001));
+    expect(
+      ParkingMotionFrame(6 / seconds).topPose.position,
+      sampleDrive(parkingAisle, .104).position,
+    );
+  });
+
+  testWidgets('대기 선택은 대기로 이어지고 다른 곳 선택은 새 자리의 3D 주행으로 이어진다', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1194, 834));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.parkingOpportunity),
+    );
+    await ready(tester);
+    await tap(tester, '계속 대기');
+    expect(
+      find.bySemanticsLabel(RegExp('출차 예정 차량: 5분 후 출차, 6분 후 출차')),
+      findsOneWidget,
+    );
+    expect(find.byType(ParkingRelocationMotion), findsNothing);
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.relocation);
+    expect(find.text('J-05 자리로 안내합니다'), findsOneWidget);
+    final marker = find.byKey(const ValueKey('relocation-position'));
+    final before = tester.getCenter(marker);
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.getCenter(marker).dy, lessThan(before.dy - 10));
+    expect(find.byType(ParkingCameraStill), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.parkingOpportunity),
+    );
+    await ready(tester);
+    await tap(tester, '다른 곳');
+    expect(find.byType(ParkingRelocationMotion), findsOneWidget);
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await seekParking(tester, ParkingPhase.reversing);
+    expect(find.byType(ParkingCameraStill), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 
