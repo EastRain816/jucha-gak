@@ -164,7 +164,7 @@ void main() {
       find.byWidgetPredicate(
         (w) =>
             w is Image &&
-            w.image == const AssetImage('assets/figma/approach_map.png'),
+            w.image == const AssetImage('assets/figma/approach_scene.png'),
       ),
       findsNothing,
     );
@@ -178,7 +178,7 @@ void main() {
       find.byWidgetPredicate(
         (w) =>
             w is Image &&
-            w.image == const AssetImage('assets/figma/approach_map.png'),
+            w.image == const AssetImage('assets/figma/approach_scene.png'),
       ),
       findsOneWidget,
     );
@@ -189,6 +189,110 @@ void main() {
       findsNothing,
     );
     expect(find.byType(ParkingCameraStill), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('J구역에서는 3D 위치와 카메라가 주차 자리 앞까지 계속 이동한다', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1194, 834));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.approach),
+    );
+    await tester.pump();
+    // Wait for image decoding without advancing the exhibition's clock.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
+    await tester.pump();
+    final beginning = tester
+        .widget<ParkingApproachMotion>(find.byType(ParkingApproachMotion))
+        .frame;
+    expect(beginning.approachProgress, closeTo(0, .0001));
+    expect(beginning.approachCameraOffset, Offset.zero);
+    expect(beginning.approachScreenPosition.dx, closeTo(1069.752, .01));
+    expect(beginning.approachScreenPosition.dy, closeTo(613.342, .01));
+    final marker = find.byKey(const ValueKey('parking-3d-position'));
+    final scene = find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image == const AssetImage('assets/figma/approach_scene.png'),
+    );
+    final startMarkerPosition = tester.getCenter(marker);
+    final startScenePosition = tester.getTopLeft(scene);
+
+    Future<List<int>> pixels(String moment) async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey('exhibition-canvas')),
+      );
+      return (await tester.runAsync(() async {
+        final image = await boundary.toImage(pixelRatio: .75);
+        final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (const bool.fromEnvironment('CAPTURE_3D_DRIVE')) {
+          final png = await image.toByteData(format: ui.ImageByteFormat.png);
+          final file = File('build/visual_qa/3d_$moment.png');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(png!.buffer.asUint8List());
+        }
+        image.dispose();
+        return data!.buffer.asUint8List().toList();
+      }))!;
+    }
+
+    final startPixels = await pixels('start');
+    await tester.pump(const Duration(seconds: 6));
+    final middle = tester
+        .widget<ParkingApproachMotion>(find.byType(ParkingApproachMotion))
+        .frame;
+    final middlePixels = await pixels('middle');
+    expect(middlePixels, isNot(orderedEquals(startPixels)));
+    final middleMarkerPosition = tester.getCenter(marker);
+    final middleScenePosition = tester.getTopLeft(scene);
+    expect(middleMarkerPosition.dy, lessThan(startMarkerPosition.dy - 10));
+    expect(middleScenePosition.dy, greaterThan(startScenePosition.dy + 10));
+    expect(
+      middle.approachPosition.dy,
+      lessThan(beginning.approachPosition.dy - 50),
+    );
+    expect(middle.approachCameraOffset.dy, greaterThan(20));
+    expect(
+      middle.approachScreenPosition.dy,
+      lessThan(beginning.approachScreenPosition.dy),
+    );
+
+    // Exercise the last second too: the old code was a frozen keyframe here.
+    final untilLastSecond =
+        (parkingReverseStart - parkingTopViewEnd) *
+            parkingDriveDuration.inMicroseconds -
+        const Duration(seconds: 7).inMicroseconds;
+    await tester.pump(Duration(microseconds: untilLastSecond.round()));
+    final late = tester
+        .widget<ParkingApproachMotion>(find.byType(ParkingApproachMotion))
+        .frame;
+    final latePixels = await pixels('late');
+    expect(latePixels, isNot(orderedEquals(middlePixels)));
+    expect(tester.getCenter(marker).dy, lessThan(middleMarkerPosition.dy - 10));
+    expect(
+      tester.getTopLeft(scene).dy,
+      greaterThan(middleScenePosition.dy + 10),
+    );
+    expect(late.approachPosition.dy, lessThan(middle.approachPosition.dy - 50));
+    expect(
+      late.approachCameraOffset.dy,
+      greaterThan(middle.approachCameraOffset.dy),
+    );
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await tester.pump(const Duration(milliseconds: 900));
+    final last = tester
+        .widget<ParkingApproachMotion>(find.byType(ParkingApproachMotion))
+        .frame;
+    expect(last.approachPosition.dy, lessThan(late.approachPosition.dy));
+    expect(last.approachPosition.dy, closeTo(350, .1));
+    expect(find.byType(ParkingCameraStill), findsNothing);
+    await tester.pump(const Duration(milliseconds: 101));
+    expect(find.byType(ParkingApproachMotion), findsNothing);
+    expect(find.byType(ParkingCameraStill), findsOneWidget);
+    expect(find.byType(SurroundParkingView), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

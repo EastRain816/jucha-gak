@@ -295,5 +295,14 @@
     "y": -119.703125,
     "w": 1395.4375,
     "h": 874.676392
+  },
+  "approach_scene": {
+    "nodeId": "262:45231",
+    "file": "assets/figma/approach_scene.png",
+    "x": 425,
+    "y": -369,
+    "w": 1118,
+    "h": 1289.272705,
+    "export": "Full original 3D artwork including offscreen content; navigation marker 262:45232 exported separately as approach_position.svg. Temporary export clone removed."
   }
 }

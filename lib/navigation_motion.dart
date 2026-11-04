@@ -14,6 +14,16 @@ const parkingJEntranceX = 903.0;
 final parkingTopViewEnd = _findJEntryProgress();
 const parkingReverseStart = 38 / 52;
 
+// The opening 3D pose is the exact Figma 262:45216 composition. Move through
+// that illustration's clear aisle towards its original P-marked parking bay.
+const _approachMarkerBounds = Rect.fromLTWH(
+  980.902344,
+  536.86718,
+  177.699219,
+  152.950203,
+);
+const _approachSceneBounds = Rect.fromLTWH(425, -369, 1118, 1289.272705);
+
 // All coordinates belong to the original Figma lot, not to the iPad screen.
 // This keeps the car on the aisles while the camera zooms and rotates.
 // Three straight aisle-center segments in the original map coordinates:
@@ -87,6 +97,17 @@ class ParkingMotionFrame {
   // The full original 3D keyframe appears on the first frame inside J.
   double get viewBlend => hasEnteredJ ? 1 : 0;
 
+  // The marker advances relative to the parked cars, while a following camera
+  // also translates the scene. Neither layer freezes during the 3D approach.
+  double get approachTravel => _smooth(approachProgress);
+  Offset get approachPosition => Offset.lerp(
+    _approachMarkerBounds.center,
+    Offset(_approachMarkerBounds.center.dx, 350),
+    approachTravel,
+  )!;
+  Offset get approachCameraOffset => Offset(0, 140 * approachTravel);
+  Offset get approachScreenPosition => approachPosition + approachCameraOffset;
+
   int get metersRemaining => ((1 - topProgress) * 150).round();
 }
 
@@ -152,7 +173,7 @@ class ParkingJourney extends StatelessWidget {
               Positioned.fill(
                 child: Opacity(
                   opacity: frame.viewBlend,
-                  child: const _ApproachKeyframe(),
+                  child: ParkingApproachMotion(frame: frame),
                 ),
               ),
           ],
@@ -177,25 +198,48 @@ class ParkingJourney extends StatelessWidget {
   }
 }
 
-// These are original Figma graphics in their original design slots. No rows
-// of replacement cars, custom parking spaces or simulated camera guides.
-class _ApproachKeyframe extends StatelessWidget {
-  const _ApproachKeyframe();
+/// Original Figma 3D artwork with independently moving navigation and camera
+/// layers. At progress zero every layer occupies its original Figma slot.
+class ParkingApproachMotion extends StatelessWidget {
+  const ParkingApproachMotion({super.key, required this.frame});
+  final ParkingMotionFrame frame;
   @override
   Widget build(BuildContext context) => Stack(
     children: [
-      Positioned(
-        left: 424.964844,
-        top: 0,
-        width: 1118.078125,
-        height: 720,
-        child: Image.asset(
-          'assets/figma/approach_map.png',
-          fit: BoxFit.contain,
+      Positioned.fill(
+        child: Transform.translate(
+          key: const ValueKey('parking-3d-camera'),
+          offset: frame.approachCameraOffset,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fromRect(
+                rect: _approachSceneBounds,
+                child: Image.asset(
+                  // Full original scene, exported without the baked-in marker
+                  // so the moving marker is never duplicated. Offscreen artwork
+                  // is retained to prevent empty edges as the camera follows.
+                  'assets/figma/approach_scene.png',
+                  fit: BoxFit.fill,
+                ),
+              ),
+              FigmaGraphic(
+                'approach_route',
+                clipHeight: frame.approachPosition.dy - 303.871094,
+              ),
+            ],
+          ),
         ),
       ),
-      const FigmaGraphic('approach_route', clipHeight: 310),
-      const FigmaGraphic('approach_position'),
+      Positioned.fromRect(
+        key: const ValueKey('parking-3d-position'),
+        rect: Rect.fromCenter(
+          center: frame.approachScreenPosition,
+          width: _approachMarkerBounds.width,
+          height: _approachMarkerBounds.height,
+        ),
+        child: SvgPicture.asset('assets/figma/approach_position.svg'),
+      ),
     ],
   );
 }

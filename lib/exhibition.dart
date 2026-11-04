@@ -44,6 +44,16 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
   int _route = 0;
   int _floor = 1;
   bool _floorsExpanded = true;
+  bool _parkingArtworkCached = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_parkingArtworkCached) return;
+    _parkingArtworkCached = true;
+    // Decode before reaching J, so the first 3D frame has its full artwork.
+    precacheImage(const AssetImage('assets/figma/approach_scene.png'), context);
+  }
 
   @override
   void initState() {
