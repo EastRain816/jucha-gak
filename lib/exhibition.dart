@@ -435,24 +435,15 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
       const FigmaGraphic('legend'),
     ],
     ExhibitionStage.zoneGuidance => [
-      AnimatedBuilder(
-        animation: _parkingMotion,
-        builder: (context, _) => _banner(
-          '추천 구역으로 안내',
-          'J구역까지 ${ParkingMotionFrame(_parkingMotion.value).metersRemaining}m',
-        ),
-      ),
+      _banner('추천 구역으로 안내', 'J구역까지 150m'),
       ..._parkingControls(),
       const FigmaGraphic('legend'),
     ],
     ExhibitionStage.approach => [
-      _banner('주차각이 나왔어요', 'J-05 · 후진 주차 준비'),
+      _banner('주차각이 나왔어요', 'J구역까지 100m'),
       ..._parkingControls(),
     ],
-    ExhibitionStage.reversing => [
-      _banner('후진 주차 중', 'J-05 · 주변을 확인하세요'),
-      ..._parkingControls(),
-    ],
+    ExhibitionStage.reversing => [],
     ExhibitionStage.parked => [
       _banner('J-05', '주차 완료'),
       ..._parkingControls(),
@@ -937,7 +928,7 @@ class _ExhibitionState extends State<Exhibition> with TickerProviderStateMixin {
             top: -.588,
             width: 798.523,
             height: 202.176,
-            child: IgnorePointer(child: _cardGraphic('banner_background')),
+            child: IgnorePointer(child: _cardGraphic('arrival_banner')),
           ),
           _logo(39.9, 42.9),
           _text(

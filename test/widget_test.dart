@@ -72,7 +72,8 @@ void main() {
     expect(find.byType(ParkingJourney), findsOneWidget);
     await tester.pump(const Duration(seconds: 8));
     await ready(tester);
-    expect(find.text('후진 주차 중'), findsOneWidget);
+    expect(find.byType(ParkingCameraStill), findsOneWidget);
+    expect(find.text('후진 주차 중'), findsNothing);
     expect(find.byType(SurroundParkingView), findsOneWidget);
     await tester.pump(const Duration(seconds: 14));
     await ready(tester);
@@ -125,7 +126,7 @@ void main() {
     expect(frame.topPose.position.dx, greaterThan(190));
     expect(frame.viewBlend, 0);
     expect(find.byType(SurroundParkingView), findsNothing);
-    await tester.pump(const Duration(seconds: 26));
+    await tester.pump(const Duration(seconds: 25));
     frame = ParkingMotionFrame(
       tester.widget<ParkingJourney>(find.byType(ParkingJourney)).progress,
     );
@@ -144,18 +145,98 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('전진에서 후진으로 바뀌어도 차량 위치가 튀지 않는다', () {
-    final before = ParkingMotionFrame(parkingReverseStart - .000001)
-        .perspectivePose;
-    final after = ParkingMotionFrame(parkingReverseStart).perspectivePose;
-    expect((before.position - after.position).distance, lessThan(.1));
-    final finalPose = ParkingMotionFrame(1).perspectivePose;
-    expect(
-      (finalPose.position - const Offset(620, 470)).distance,
-      lessThan(.01),
+  test('첨부 동선은 입구에서 J 아래 통로를 따라가며 주차면을 가로지르지 않는다', () {
+    // Independent geometry from the original parking-map outline and bay rows.
+    final boundary = Path()
+      ..addPolygon(const [
+        Offset(155, 40),
+        Offset(1045, 40),
+        Offset(1445, 425),
+        Offset(1465, 455),
+        Offset(1465, 500),
+        Offset(1430, 555),
+        Offset(615, 555),
+        Offset(326, 306),
+        Offset(258, 371),
+        Offset(200, 311),
+        Offset(263, 249),
+        Offset(144, 146),
+        Offset(125, 110),
+        Offset(130, 65),
+      ], true);
+    const bays = [
+      Rect.fromLTWH(220, 50, 665, 35),
+      Rect.fromLTWH(314, 136, 350, 75),
+      Rect.fromLTWH(689, 136, 190, 75),
+      Rect.fromLTWH(470, 258, 190, 75),
+      Rect.fromLTWH(689, 258, 190, 75),
+      Rect.fromLTWH(897, 258, 150, 75),
+      Rect.fromLTWH(610, 377, 55, 75),
+      Rect.fromLTWH(690, 377, 190, 75),
+      Rect.fromLTWH(903, 377, 344, 75),
+      Rect.fromLTWH(620, 505, 660, 40),
+    ];
+    final metric = parkingAisle.computeMetrics().first;
+    final start = sampleDrive(parkingAisle, 0).position;
+    expect((start - const Offset(244, 351)).distance, lessThan(.01));
+    // The first bend must travel up/right through the entrance, as annotated.
+    final turn = sampleDrive(parkingAisle, .12).position;
+    expect(turn.dy, lessThan(start.dy));
+    for (double d = 0; d <= metric.length; d += 2) {
+      final point = metric.getTangentForOffset(d)!.position;
+      expect(boundary.contains(point), isTrue, reason: 'outside lot at $point');
+      expect(
+        bays.any((bay) => bay.contains(point)),
+        isFalse,
+        reason: 'crosses a parking bay at $point',
+      );
+    }
+    final end = sampleDrive(parkingAisle, 1).position;
+    expect(end.dx, inInclusiveRange(1000, 1100));
+    expect(end.dy, inInclusiveRange(470, 495));
+  });
+
+  testWidgets('후진 화면은 피그마 원본 사진 두 장이며 시간에 따라 변하지 않는다', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1194, 834));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const ParkingApp(initialStage: ExhibitionStage.reversing),
     );
-    final nearEnd = ParkingMotionFrame(.999).perspectivePose;
-    expect((nearEnd.position - finalPose.position).distance, lessThan(1));
+    await ready(tester);
+    expect(find.byType(ParkingCameraStill), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image == const AssetImage('assets/figma/rear_camera.png'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Image &&
+            w.image == const AssetImage('assets/figma/surround_view.png'),
+      ),
+      findsOneWidget,
+    );
+    Future<List<int>> pixels() async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey('exhibition-canvas')),
+      );
+      return (await tester.runAsync(() async {
+        final image = await boundary.toImage(pixelRatio: .5);
+        final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        image.dispose();
+        return data!.buffer.asUint8List().toList();
+      }))!;
+    }
+
+    final before = await pixels();
+    await tester.pump(const Duration(seconds: 5));
+    expect(await pixels(), orderedEquals(before));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('전 화면을 iPad 비율과 큰 시스템 글자에서 넘침 없이 그린다', (tester) async {
@@ -167,6 +248,9 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(ParkingApp(initialStage: stage));
       await ready(tester);
+      if (stage == ExhibitionStage.approach) {
+        await tester.pump(const Duration(seconds: 3));
+      }
       expect(tester.takeException(), isNull, reason: stage.name);
       if (const bool.fromEnvironment('CAPTURE_EXHIBITION')) {
         final boundary = tester.renderObject<RenderRepaintBoundary>(
